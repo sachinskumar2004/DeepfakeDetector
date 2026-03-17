@@ -27,18 +27,29 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // ✅ Request overlay permission
+        // Overlay permission
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(
                 this,
                 "Please allow 'Display over other apps' permission",
                 Toast.LENGTH_LONG
             ).show()
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
+            startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
             )
-            startActivity(intent)
+        }
+
+        // Accessibility service for scroll/home/back
+        if (!isAccessibilityEnabled()) {
+            Toast.makeText(
+                this,
+                "Enable DeepfakeDetector accessibility service for scroll detection",
+                Toast.LENGTH_LONG
+            ).show()
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
 
         val startButton = findViewById<Button>(R.id.btnStart)
@@ -61,6 +72,15 @@ class MainActivity : AppCompatActivity() {
                 else -> startScreenCapture()
             }
         }
+    }
+
+    private fun isAccessibilityEnabled(): Boolean {
+        val expected = "${packageName}/${ScrollDetectorService::class.java.canonicalName}"
+        val enabled = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
     }
 
     private fun hasNotificationPermission(): Boolean {

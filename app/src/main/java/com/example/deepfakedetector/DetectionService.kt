@@ -47,8 +47,9 @@ class DetectionService : Service() {
     private val inferenceExecutor = Executors.newSingleThreadExecutor()
 
     @Volatile private var faceDetectionRunning = false
-    private var lastFaceTime = 0L
+    private var lastFrameTime = 0L
     private var lastAlertTime = 0L
+    private var lastSeenResetTime: Long = 0L   // from ScrollEventBus
 
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
@@ -121,11 +122,11 @@ class DetectionService : Service() {
             val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
 
             val now = System.currentTimeMillis()
-            if (now - lastFaceTime < FACE_INTERVAL_MS || faceDetectionRunning) {
+            if (now - lastFrameTime < FACE_INTERVAL_MS || faceDetectionRunning) {
                 image.close()
                 return@setOnImageAvailableListener
             }
-            lastFaceTime = now
+            lastFrameTime = now
 
             val bitmap = imageToBitmap(image)
             image.close()
@@ -160,8 +161,24 @@ class DetectionService : Service() {
     // ─────────────────────────────────────────
     private fun addFrame(frame: FloatArray) {
         synchronized(frameBuffer) {
+            if (ScrollEventBus.lastResetTime > lastSeenResetTime) {
+                frameBuffer.clear()
+                lastSeenResetTime = ScrollEventBus.lastResetTime
+            }
+
             if (frameBuffer.size == FRAME_COUNT) frameBuffer.removeFirst()
             frameBuffer.addLast(frame)
+
+            // ✅ Pad with duplicates for faster first inference
+            if (frameBuffer.size in 4..15) {
+                val current = frameBuffer.toList()
+                while (frameBuffer.size < FRAME_COUNT) {
+                    frameBuffer.addLast(current.last())
+                }
+            }
+
+            Log.d("BUFFER", "Buffer size: ${frameBuffer.size}/$FRAME_COUNT")
+
             if (frameBuffer.size == FRAME_COUNT) {
                 runInference()
                 frameBuffer.clear()
@@ -169,12 +186,14 @@ class DetectionService : Service() {
         }
     }
 
+
     // ─────────────────────────────────────────
     private fun runInference() {
         val frames: List<FloatArray>
         synchronized(frameBuffer) {
             frames = frameBuffer.toList()
         }
+        if (frames.size < FRAME_COUNT) return
 
         inferenceExecutor.execute {
             try {
@@ -189,8 +208,7 @@ class DetectionService : Service() {
                 val prob = sigmoid(logit)
 
                 val label = when {
-                    prob > 0.8f -> "FAKE 🔥"
-                    prob > 0.6f -> "SUSPICIOUS ❓"
+                    prob > 0.6f -> "FAKE 🔥"
                     else -> "REAL ✅"
                 }
 
@@ -209,7 +227,6 @@ class DetectionService : Service() {
     private fun handleResult(label: String, probStr: String, prob: Float) {
         val now = System.currentTimeMillis()
 
-        // Always update foreground notification silently
         val manager = getSystemService(NotificationManager::class.java)
         val silent = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Deepfake Detector Active")
@@ -220,7 +237,6 @@ class DetectionService : Service() {
             .build()
         manager?.notify(NOTIFICATION_ID, silent)
 
-        // ✅ Show overlay ONLY for FAKE / SUSPICIOUS
         if (prob > 0.6f) {
             if (now - lastAlertTime < ALERT_COOLDOWN_MS) return
             lastAlertTime = now
@@ -229,7 +245,6 @@ class DetectionService : Service() {
     }
 
     // ─────────────────────────────────────────
-    // ✅ Overlay popup — works on all Android versions
     private fun showOverlay(label: String, prob: String) {
         if (!Settings.canDrawOverlays(this)) {
             Log.w("OVERLAY", "No overlay permission")
@@ -257,9 +272,9 @@ class DetectionService : Service() {
         }
 
         val bgColor = if (label.contains("FAKE"))
-            Color.argb(230, 200, 0, 0)      // 🔴 Red for FAKE
+            Color.argb(230, 200, 0, 0)
         else
-            Color.argb(230, 200, 100, 0)    // 🟠 Orange for SUSPICIOUS
+            Color.argb(230, 200, 100, 0)
 
         val view = TextView(this).apply {
             text = "$label  ($prob)"
@@ -271,8 +286,6 @@ class DetectionService : Service() {
 
         overlayView = view
         wm.addView(view, params)
-
-        // Auto-remove after 3 seconds
         mainHandler.postDelayed({ removeOverlay() }, 3000)
     }
 
@@ -310,7 +323,6 @@ class DetectionService : Service() {
         return buffer
     }
 
-    // ─────────────────────────────────────────
     private fun bitmapToFloatArray(bitmap: Bitmap): FloatArray {
         val resized = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
         val pixels = IntArray(INPUT_SIZE * INPUT_SIZE)
@@ -327,7 +339,6 @@ class DetectionService : Service() {
         return out
     }
 
-    // ─────────────────────────────────────────
     private fun cropFace(bitmap: Bitmap, r: Rect): Bitmap {
         val x      = r.left.coerceAtLeast(0)
         val y      = r.top.coerceAtLeast(0)
@@ -370,7 +381,6 @@ class DetectionService : Service() {
 
     override fun onBind(intent: Intent?) = null
 
-    // ─────────────────────────────────────────
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
