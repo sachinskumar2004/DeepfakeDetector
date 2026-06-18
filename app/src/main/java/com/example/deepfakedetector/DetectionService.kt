@@ -208,7 +208,7 @@ class DetectionService : Service() {
                 val prob = sigmoid(logit)
 
                 val label = when {
-                    prob > 0.6f -> "FAKE 🔥"
+                    prob > 0.4f -> "FAKE 🔥"
                     else -> "REAL ✅"
                 }
 
@@ -237,7 +237,7 @@ class DetectionService : Service() {
             .build()
         manager?.notify(NOTIFICATION_ID, silent)
 
-        if (prob > 0.6f) {
+        if (prob > 0.4f) {
             if (now - lastAlertTime < ALERT_COOLDOWN_MS) return
             lastAlertTime = now
             showOverlay(label, probStr)
