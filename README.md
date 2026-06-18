@@ -354,9 +354,9 @@ This project was built collaboratively by a team of four. Replace the placeholde
 | Name | Role | GitHub |
 |---|---|---|
 | Sachin S Kumar | Android Development, ML Integration | [@sachinskumar2004](https://github.com/sachinskumar2004) |
-| Teammate 2 Name | ML Model Training, Model Testing | [@ghima0110](https://github.com/ghima0110) |
-| Teammate 3 Name |  Dataset refining, Documentation | [@NandanaBNair](https://github.com/NandanaBNair) |
-| Teammate 4 Name | ML Model Training, Model Testing | [@Rozana03](https://github.com/Rozana03) |
+| Hima G | ML Model Training, Model Testing | [@ghima0110](https://github.com/ghima0110) |
+| Nandana B Nair |  Dataset refining, Documentation | [@NandanaBNair](https://github.com/NandanaBNair) |
+| Rozana Beegum | ML Model Training, Model Testing | [@Rozana03](https://github.com/Rozana03) |
 
 
 
